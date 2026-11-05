@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "n8n:up": "docker compose up -d n8n",
-    "n8n:import": "docker compose exec n8n n8n import:workflow --separate --input=/workflows"
+    "n8n:import": "docker compose stop n8n && docker compose run --rm --entrypoint n8n n8n import:workflow --separate --input=/workflows && docker compose up -d n8n"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.25",

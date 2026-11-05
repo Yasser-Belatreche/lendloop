@@ -99,9 +99,11 @@ N8N_PUBLIC_URL=https://<your-tunnel>/      # optional, for webhooks from Convex 
 ```
 ```bash
 docker compose up -d
-npm run n8n:import        # imports the three workflows from n8n/workflows
+npm run n8n:import        # imports the three workflows (stops n8n briefly: SQLite is single-writer)
 ```
 Open http://localhost:5678, create the owner account, then **activate** "Request notification" and "Overdue reminders" (the error handler is linked from their settings and doesn't need activating). Convex cloud has to reach the webhook: expose port 5678 with a tunnel (`ngrok http 5678`) and use that URL in `N8N_REQUEST_WEBHOOK_URL`.
+
+On Windows Git Bash, prefix docker commands with `MSYS_NO_PATHCONV=1` so `/workflows` isn't rewritten into a Windows path.
 
 ### 4. Run
 ```bash
