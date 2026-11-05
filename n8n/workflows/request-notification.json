@@ -1,0 +1,120 @@
+{
+  "id": "LlRequestNotify1",
+  "name": "LendLoop - Request notification",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a01",
+      "name": "Webhook (from Convex)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "lendloop-request",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop-request",
+        "responseMode": "responseNode",
+        "options": { "rawBody": true }
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a02",
+      "name": "Verify signature + dedupe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Verifies the HMAC from Convex over `${timestamp}.${rawBody}` and drops replays.\n// Secret comes from the container environment, never from this workflow.\nconst crypto = require('crypto');\nconst secret = $env.LENDLOOP_WEBHOOK_SECRET;\nconst item = $input.first();\nconst h = item.json.headers || {};\nconst ts = h['x-lendloop-timestamp'];\nconst sig = h['x-lendloop-signature'] || '';\nconst raw = item.binary && item.binary.data\n  ? (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8')\n  : JSON.stringify(item.json.body);\n\nconst fresh = ts && Math.abs(Date.now() / 1000 - Number(ts)) <= 300;\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret || '').update(`${ts}.${raw}`).digest('hex');\nconst valid = !!secret && fresh && sig.length === expected.length &&\n  crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\nif (!valid) return [{ json: { valid: false } }];\n\nconst body = JSON.parse(raw);\n// Idempotency on our side too: Convex may retry a delivery whose response was lost.\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || [];\nconst duplicate = store.seen.includes(body.eventId);\nif (!duplicate) store.seen = [...store.seen, body.eventId].slice(-1000);\n\nreturn [{ json: { valid: true, duplicate, event: body } }];"
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a03",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a04",
+      "name": "Reject (401)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"unauthorized\" } }}",
+        "options": { "responseCode": 401 }
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a05",
+      "name": "Build message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, -80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Uses only the fields the message needs: recipient name/email, tool name, dates, status.\nconst { duplicate, event } = $input.first().json;\nif (duplicate) return [{ json: { skip: true, eventId: event.eventId } }];\nconst r = event.recipient;\nconst lines = {\n  'loan.requested': `${r.name}, a neighbor asked to borrow your ${event.tool.name} from ${event.startDate} to ${event.endDate}. Open LendLoop to approve or decline.`,\n  'loan.cancelled': `${r.name}, the request for your ${event.tool.name} (${event.startDate} to ${event.endDate}) was cancelled.`,\n  'loan.approved': `${r.name}, good news: your request for the ${event.tool.name} (${event.startDate} to ${event.endDate}) was approved.`,\n  'loan.declined': `${r.name}, your request for the ${event.tool.name} (${event.startDate} to ${event.endDate}) was declined.`,\n  'loan.returned': `${r.name}, thanks for returning the ${event.tool.name}. The loan is closed.`,\n};\nreturn [{ json: {\n  skip: false,\n  eventId: event.eventId,\n  to: r.email,\n  subject: `LendLoop: ${event.tool.name} (${event.event.replace('loan.', '')})`,\n  text: lines[event.event] || `Update on ${event.tool.name}: ${event.status}`,\n} }];"
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a06",
+      "name": "Send notification (mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, -80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mock channel: logs the message. Swap this node for 'Send Email' (SMTP credential)\n// or Slack/Discord; the input already has { to, subject, text }.\nconst m = $input.first().json;\nif (m.skip) return [{ json: { delivered: false, duplicate: true, eventId: m.eventId } }];\nconsole.log(`[LendLoop notify] to=${m.to} subject=\"${m.subject}\" text=\"${m.text}\"`);\nreturn [{ json: { delivered: true, channel: 'mock-log', eventId: m.eventId } }];"
+      }
+    },
+    {
+      "id": "6f1d6a1e-0a51-4d0e-9a5c-1f0b8f7b0a07",
+      "name": "Acknowledge (200)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, -80],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"eventId\": $json.eventId, \"duplicate\": !!$json.duplicate } }}",
+        "options": { "responseCode": 200 }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook (from Convex)": { "main": [[{ "node": "Verify signature + dedupe", "type": "main", "index": 0 }]] },
+    "Verify signature + dedupe": { "main": [[{ "node": "Signature valid?", "type": "main", "index": 0 }]] },
+    "Signature valid?": {
+      "main": [
+        [{ "node": "Build message", "type": "main", "index": 0 }],
+        [{ "node": "Reject (401)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build message": { "main": [[{ "node": "Send notification (mock)", "type": "main", "index": 0 }]] },
+    "Send notification (mock)": { "main": [[{ "node": "Acknowledge (200)", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LlErrorHandler01",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {},
+  "tags": []
+}

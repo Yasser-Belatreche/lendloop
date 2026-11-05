@@ -1,0 +1,24 @@
+# Self-hosted n8n for LendLoop. Secrets come from ./.env (git-ignored), never from the
+# workflow JSON. Start: `docker compose up -d`, then import the workflows (see README).
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=UTC
+      - TZ=UTC
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+      - LENDLOOP_WEBHOOK_SECRET=${LENDLOOP_WEBHOOK_SECRET:?set LENDLOOP_WEBHOOK_SECRET in .env}
+      - CONVEX_SITE_URL=${CONVEX_SITE_URL:?set CONVEX_SITE_URL in .env}
+      # Code nodes may read $env (for the two values above) and use Node's crypto module.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_SECURE_COOKIE=false
+      # Expose webhooks to a deployed Convex with a tunnel, e.g. `ngrok http 5678`, and set:
+      - WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro

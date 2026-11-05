@@ -1,0 +1,59 @@
+{
+  "id": "LlErrorHandler01",
+  "name": "LendLoop - Error handler",
+  "active": false,
+  "nodes": [
+    {
+      "id": "9b3d2c8f-2c73-4f20-9c7e-3b2d0f9d2c01",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "9b3d2c8f-2c73-4f20-9c7e-3b2d0f9d2c02",
+      "name": "Log + sign error report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Runs whenever a LendLoop workflow fails (after its own retries). Logs the failure and\n// reports it to Convex so it appears in the app's admin 'Automation health' panel.\n// Only the workflow name, execution id and error message leave n8n: no payload data.\nconst crypto = require('crypto');\nconst e = $input.first().json;\nconst report = {\n  executionId: String(e.execution?.id ?? `manual-${Date.now()}`),\n  workflow: e.workflow?.name ?? 'unknown',\n  message: String(e.execution?.error?.message ?? 'unknown error').slice(0, 300),\n};\nconsole.error(`[LendLoop error] ${report.workflow} execution ${report.executionId}: ${report.message}`);\nconst body = JSON.stringify(report);\nconst ts = String(Math.floor(Date.now() / 1000));\nconst signature = 'sha256=' + crypto.createHmac('sha256', $env.LENDLOOP_WEBHOOK_SECRET).update(`${ts}.${body}`).digest('hex');\nreturn [{ json: { body, ts, signature } }];"
+      }
+    },
+    {
+      "id": "9b3d2c8f-2c73-4f20-9c7e-3b2d0f9d2c03",
+      "name": "Report to Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/n8n/workflow-errors",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-lendloop-timestamp", "value": "={{ $json.ts }}" },
+            { "name": "x-lendloop-signature", "value": "={{ $json.signature }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": { "timeout": 15000 }
+      }
+    }
+  ],
+  "connections": {
+    "On workflow error": { "main": [[{ "node": "Log + sign error report", "type": "main", "index": 0 }]] },
+    "Log + sign error report": { "main": [[{ "node": "Report to Convex", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all" },
+  "pinData": {},
+  "tags": []
+}
