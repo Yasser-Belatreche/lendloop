@@ -8,9 +8,20 @@
       "name": "Every day at 09:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
-        "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 9 }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9
+            }
+          ]
+        }
       }
     },
     {
@@ -18,7 +29,10 @@
       "name": "Sign overdue query",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [240, 0],
+      "position": [
+        240,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "jsCode": "const crypto = require('crypto');\nconst asOf = new Date().toISOString().slice(0, 10);\nconst body = JSON.stringify({ asOf });\nconst ts = String(Math.floor(Date.now() / 1000));\nconst signature = 'sha256=' + crypto.createHmac('sha256', $env.LENDLOOP_WEBHOOK_SECRET).update(`${ts}.${body}`).digest('hex');\nreturn [{ json: { asOf, body, ts, signature } }];"
@@ -29,7 +43,10 @@
       "name": "Fetch overdue loans (Convex)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 0],
+      "position": [
+        480,
+        0
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
@@ -39,15 +56,23 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-lendloop-timestamp", "value": "={{ $json.ts }}" },
-            { "name": "x-lendloop-signature", "value": "={{ $json.signature }}" }
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ $json.body }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
       }
     },
     {
@@ -55,7 +80,10 @@
       "name": "One item per loan",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 0],
+      "position": [
+        720,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "jsCode": "const { asOf, loans } = $input.first().json;\nreturn (loans || []).map((loan) => ({ json: { ...loan, asOf } }));"
@@ -66,7 +94,10 @@
       "name": "Send reminder (mock)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 0],
+      "position": [
+        960,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "jsCode": "// Mock channel: logs the reminder. A real channel (Send Email, Slack...) goes here; a\n// failure is caught and written back as 'failed' so it shows on the loan instead of vanishing.\nconst l = $json;\nlet status = 'sent';\nlet detail = 'mock-log';\ntry {\n  console.log(`[LendLoop reminder] to=${l.borrowerEmail} \"Hi ${l.borrowerName}, the ${l.toolName} was due back on ${l.dueDate} (${l.daysOverdue} day(s) ago). Please return it or message the lender.\"`);\n} catch (e) {\n  status = 'failed';\n  detail = String(e.message || e).slice(0, 200);\n}\nreturn { json: { loanId: l.loanId, reminderDate: l.asOf, status, detail } };"
@@ -77,7 +108,10 @@
       "name": "Sign write-back",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 0],
+      "position": [
+        1200,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "jsCode": "const crypto = require('crypto');\nconst body = JSON.stringify({ loanId: $json.loanId, reminderDate: $json.reminderDate, status: $json.status, detail: $json.detail });\nconst ts = String(Math.floor(Date.now() / 1000));\nconst signature = 'sha256=' + crypto.createHmac('sha256', $env.LENDLOOP_WEBHOOK_SECRET).update(`${ts}.${body}`).digest('hex');\nreturn { json: { body, ts, signature } };"
@@ -88,7 +122,10 @@
       "name": "Write reminder status (Convex)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1440, 0],
+      "position": [
+        1440,
+        0
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
@@ -98,25 +135,139 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-lendloop-timestamp", "value": "={{ $json.ts }}" },
-            { "name": "x-lendloop-signature", "value": "={{ $json.signature }}" }
+            {
+              "name": "x-lendloop-timestamp",
+              "value": "={{ $json.ts }}"
+            },
+            {
+              "name": "x-lendloop-signature",
+              "value": "={{ $json.signature }}"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ $json.body }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "8a2c1b7e-1b62-4e1f-8b6d-2a1c9e8c1b08",
+      "name": "Run now (manual test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8a2c1b7e-1b62-4e1f-8b6d-2a1c9e8c1b09",
+      "name": "Run on demand (CLI / other workflow)",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
       }
     }
   ],
   "connections": {
-    "Every day at 09:00": { "main": [[{ "node": "Sign overdue query", "type": "main", "index": 0 }]] },
-    "Sign overdue query": { "main": [[{ "node": "Fetch overdue loans (Convex)", "type": "main", "index": 0 }]] },
-    "Fetch overdue loans (Convex)": { "main": [[{ "node": "One item per loan", "type": "main", "index": 0 }]] },
-    "One item per loan": { "main": [[{ "node": "Send reminder (mock)", "type": "main", "index": 0 }]] },
-    "Send reminder (mock)": { "main": [[{ "node": "Sign write-back", "type": "main", "index": 0 }]] },
-    "Sign write-back": { "main": [[{ "node": "Write reminder status (Convex)", "type": "main", "index": 0 }]] }
+    "Every day at 09:00": {
+      "main": [
+        [
+          {
+            "node": "Sign overdue query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign overdue query": {
+      "main": [
+        [
+          {
+            "node": "Fetch overdue loans (Convex)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch overdue loans (Convex)": {
+      "main": [
+        [
+          {
+            "node": "One item per loan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per loan": {
+      "main": [
+        [
+          {
+            "node": "Send reminder (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reminder (mock)": {
+      "main": [
+        [
+          {
+            "node": "Sign write-back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign write-back": {
+      "main": [
+        [
+          {
+            "node": "Write reminder status (Convex)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (manual test)": {
+      "main": [
+        [
+          {
+            "node": "Sign overdue query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run on demand (CLI / other workflow)": {
+      "main": [
+        [
+          {
+            "node": "Sign overdue query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",

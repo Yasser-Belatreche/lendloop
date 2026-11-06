@@ -51,7 +51,12 @@ export const markDelivered = internalMutation({
   handler: async (ctx, { outboxId }) => {
     const row = await ctx.db.get(outboxId);
     if (!row || row.status === "delivered") return;
-    await ctx.db.patch(outboxId, { status: "delivered", attempts: row.attempts + 1, deliveredAt: Date.now() });
+    await ctx.db.patch(outboxId, {
+      status: "delivered",
+      attempts: row.attempts + 1,
+      deliveredAt: Date.now(),
+      lastError: undefined,
+    });
     await recordEvent(ctx, {
       loanId: row.loanId,
       kind: "request_notification",

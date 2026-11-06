@@ -77,13 +77,24 @@ npm install
 
 ### 1. Clerk
 1. Create an application in Clerk and copy the keys into `.env.local` (see `.env.example`).
-2. Enable the **Convex** integration in the Clerk dashboard (or create a JWT template named `convex`) and copy its issuer URL (Frontend API URL).
+2. Enable the **Convex** integration (Configure → Developers → Integrations) and copy the Frontend API URL (the issuer).
+3. Add the user's email and name to the session token, because the integration's token only carries `aud: "convex"` by default (Configure → Sessions → Customize session token):
+   ```json
+   {
+     "email": "{{user.primary_email_address}}",
+     "email_verified": "{{user.email_verified}}",
+     "name": "{{user.full_name}}",
+     "given_name": "{{user.first_name}}"
+   }
+   ```
+   Without these claims users are stored without an email, so notifications have no recipient and the `ADMIN_EMAILS` bootstrap can't match anyone.
 
 ### 2. Convex
 ```bash
 npx convex dev            # first run: log in, create the project; writes NEXT_PUBLIC_CONVEX_URL to .env.local
 npx convex env set CLERK_JWT_ISSUER_DOMAIN https://<your-slug>.clerk.accounts.dev
-npx convex env set ADMIN_EMAILS you@example.com
+npx convex env set ADMIN_EMAILS you@example.com   # applies on a user's first sign-in
+# already signed in before setting it?  npx convex run users:setRole '{"email":"you@example.com","role":"admin"}'
 npx convex env set LENDLOOP_WEBHOOK_SECRET "$(openssl rand -hex 32)"
 npx convex env set N8N_REQUEST_WEBHOOK_URL https://<public-n8n-url>/webhook/lendloop-request
 ```
@@ -120,9 +131,19 @@ The tests run the real Convex functions in memory with `convex-test`; no deploym
 ### Trying the automations
 - Request a tool as one user, then look at the n8n execution log: the "Send notification (mock)" node prints the message, and the loan card shows "Notification sent just now".
 - For reminders, approve a loan, then in the Convex dashboard set its `endDate` to a past date and run "Overdue reminders" manually in n8n. The borrower's card shows "Overdue" and "Reminder sent just now"; run it again and nothing is sent twice.
-- Stop n8n and request a tool: the delivery retries, then shows under Admin → Automation health with a Retry button.
+- Stop n8n and request a tool: Admin → Automation health shows it pending while it retries (10 s, 1 min, 5 min, 30 min); start n8n again and the next retry delivers it. After 5 failed attempts it shows as failed with a Retry button.
 
 ---
+
+## Verified end to end (local run, 2026-11-06)
+
+Run against a real Clerk dev instance, a Convex dev deployment and n8n 2.46.6 in Docker (webhook exposed with a Cloudflare quick tunnel):
+
+- Signed request to `/n8n/overdue-loans` returns data; an unsigned one gets 401.
+- "Overdue reminders" found the overdue loan, sent the (mock) reminder and wrote back `sent`; a second run found nothing to send and Convex still held exactly one reminder.
+- Requesting and cancelling a tool delivered signed webhooks to n8n on the first attempt ("Notification sent just now" on the loan).
+- With n8n stopped, the delivery failed twice with 502, stayed pending, and was delivered on the third attempt once n8n was back.
+- Admin: all loans, Trusted Lender badge, automation health.
 
 ## Environment variables
 

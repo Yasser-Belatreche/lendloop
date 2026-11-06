@@ -18,7 +18,7 @@ services:
       - N8N_RUNNERS_ENABLED=true
       - N8N_SECURE_COOKIE=false
       # Expose webhooks to a deployed Convex with a tunnel, e.g. `ngrok http 5678`, and set:
-      - WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
+      - N8N_WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
     volumes:
       - ./n8n-data:/home/node/.n8n
       - ./n8n/workflows:/workflows:ro

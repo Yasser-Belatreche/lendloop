@@ -12,7 +12,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      {/* Browser extensions often inject attributes into <body>; don't treat that as a hydration bug. */}
+      <body suppressHydrationWarning>
         <ClerkProvider>
           <ConvexClientProvider>{children}</ConvexClientProvider>
         </ClerkProvider>
